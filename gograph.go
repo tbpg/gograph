@@ -27,6 +27,7 @@ limitations under the License.
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"go/ast"
 	"go/build"
@@ -37,7 +38,9 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
+	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -61,22 +64,59 @@ func (n node) Attributes() []encoding.Attribute {
 }
 
 func main() {
+	g, err := Graph(os.Args[1])
+	if err != nil {
+		log.Fatal(err)
+	}
+	writeDOT("out.dot", g)
+	http.HandleFunc("/dot", handleDOT)
+	http.ListenAndServe(":8080", nil)
+}
+
+func handleDOT(w http.ResponseWriter, r *http.Request) {
+	t := r.URL.Query()["type"]
+	if len(t) != 1 {
+		return
+	}
+
+	g, err := Graph(t[0])
+	if err != nil {
+		return
+	}
+	b, err := marshalDOT(g)
+	if err != nil {
+		return
+	}
+	buf := &bytes.Buffer{}
+	buf.Write(b)
+
+	cmd := exec.Command("dot", "-Tpng")
+	cmd.Stdout = w
+	cmd.Stdin = buf
+	err = cmd.Run()
+	if err != nil {
+		fmt.Fprintf(w, "failed to generate")
+	}
+}
+
+func Graph(typeString string) (graph.Graph, error) {
 	g := simple.NewDirectedGraph()
 
-	rootType, err := findType(os.Args[1])
+	rootType, err := findType(typeString)
 	if err != nil {
-		log.Fatalf("error getting type: %v", err)
+		return nil, err
 	}
 	s, ok := rootType.Type().Underlying().(*types.Struct)
 	if !ok {
-		return
+		return nil, fmt.Errorf("not a struct")
 	}
 	fmt.Printf("%s\n", rootType.Type())
 	root := newNode(g, fmt.Sprintf("%q", rootType.Type()))
 	g.AddNode(root)
 
-	handleStruct(os.Stdout, "  ", g, root, s)
-	writeDOT("out.dot", g)
+	processStruct(os.Stdout, "  ", g, root, s)
+
+	return g, nil
 }
 
 func findType(typeString string) (types.Object, error) {
@@ -122,7 +162,7 @@ func findType(typeString string) (types.Object, error) {
 	return nil, fmt.Errorf("type not found: %q", typeString)
 }
 
-func handleStruct(w io.Writer, p string, g *simple.DirectedGraph, parent node, s *types.Struct) {
+func processStruct(w io.Writer, p string, g *simple.DirectedGraph, parent node, s *types.Struct) {
 	for i := 0; i < s.NumFields(); i++ {
 		f := s.Field(i)
 		t := f.Type()
@@ -132,15 +172,19 @@ func handleStruct(w io.Writer, p string, g *simple.DirectedGraph, parent node, s
 		e := g.NewEdge(parent, n)
 		g.SetEdge(e)
 		if ss, ok := t.Underlying().(*types.Struct); ok {
-			handleStruct(w, p+"  ", g, n, ss)
+			processStruct(w, p+"  ", g, n, ss)
 		}
 	}
 }
 
 func writeDOT(filename string, g graph.Graph) error {
-	b, err := dot.Marshal(g, "goviz", "", "", false)
+	b, err := marshalDOT(g)
 	if err != nil {
 		return err
 	}
 	return ioutil.WriteFile(filename, b, 0644)
+}
+
+func marshalDOT(g graph.Graph) ([]byte, error) {
+	return dot.Marshal(g, "goviz", "", "", false)
 }
