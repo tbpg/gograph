@@ -36,13 +36,30 @@ func (n node) Attributes() []encoding.Attribute {
 
 func main() {
 	g := simple.NewDirectedGraph()
-	fset := token.NewFileSet()
 
+	rootType, err := findType(os.Args[1])
+	if err != nil {
+		log.Fatalf("error getting type: %v", err)
+	}
+	s, ok := rootType.Type().Underlying().(*types.Struct)
+	if !ok {
+		return
+	}
+	fmt.Printf("%s\n", rootType.Type())
+	root := newNode(g, fmt.Sprintf("%q", rootType.Type()))
+	g.AddNode(root)
+
+	handleStruct(os.Stdout, "  ", g, root, s)
+	writeDOT("out.dot", g)
+}
+
+func findType(typeString string) (types.Object, error) {
+	fset := token.NewFileSet()
 	gopath := os.Getenv("GOPATH")
 	if gopath == "" {
 		gopath = build.Default.GOPATH
 	}
-	split := strings.Split(os.Args[1], ".")
+	split := strings.Split(typeString, ".")
 	path := filepath.Join(gopath, "src", strings.Join(split[0:len(split)-1], "."))
 	varName := split[len(split)-1]
 
@@ -70,26 +87,13 @@ func main() {
 		tPkgs = append(tPkgs, pkg)
 	}
 
-	var rootType types.Object
 	for _, pkg := range tPkgs {
-		fmt.Println(pkg.Name())
-		rootType = pkg.Scope().Lookup(varName)
+		rootType := pkg.Scope().Lookup(varName)
 		if rootType != nil {
-			break
+			return rootType, nil
 		}
 	}
-	if rootType == nil {
-		log.Fatalf("Not found: %s\n", os.Args[1])
-	}
-
-	root := newNode(g, fmt.Sprintf("%q", rootType.Name()))
-	g.AddNode(root)
-	s, ok := rootType.Type().Underlying().(*types.Struct)
-	if !ok {
-		return
-	}
-	handleStruct(os.Stdout, "  ", g, root, s)
-	writeDOT("out.dot", g)
+	return nil, fmt.Errorf("type not found: %q", typeString)
 }
 
 func handleStruct(w io.Writer, p string, g *simple.DirectedGraph, parent node, s *types.Struct) {
