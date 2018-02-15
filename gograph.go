@@ -131,7 +131,7 @@ func findType(typeString string) (types.Object, error) {
 
 	pkgs, err := parser.ParseDir(fset, path, nil, parser.ParseComments)
 	if err != nil {
-		log.Fatal(err)
+		return nil, err
 	}
 
 	conf := types.Config{Importer: importer.Default()}
@@ -148,7 +148,7 @@ func findType(typeString string) (types.Object, error) {
 		}
 		pkg, err := conf.Check(pkg.Name, fset, files, info)
 		if err != nil {
-			log.Fatal(err) // type error
+			return nil, err
 		}
 		tPkgs = append(tPkgs, pkg)
 	}
