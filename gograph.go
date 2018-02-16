@@ -64,13 +64,32 @@ func (n node) Attributes() []encoding.Attribute {
 }
 
 func main() {
-	g, err := Graph(os.Args[1])
+	g, err := typeGraph(os.Args[1])
 	if err != nil {
 		log.Fatal(err)
 	}
 	writeDOT("out.dot", g)
 	http.HandleFunc("/dot", handleDOT)
+	http.HandleFunc("/rawdot", handleRawDOT)
+	http.Handle("/", http.FileServer(http.Dir("static")))
 	http.ListenAndServe(":8080", nil)
+}
+
+func handleRawDOT(w http.ResponseWriter, r *http.Request) {
+	t := r.URL.Query()["type"]
+	if len(t) != 1 {
+		return
+	}
+
+	g, err := typeGraph(t[0])
+	if err != nil {
+		return
+	}
+	b, err := marshalDOT(g)
+	if err != nil {
+		return
+	}
+	w.Write(b)
 }
 
 func handleDOT(w http.ResponseWriter, r *http.Request) {
@@ -79,7 +98,7 @@ func handleDOT(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	g, err := Graph(t[0])
+	g, err := typeGraph(t[0])
 	if err != nil {
 		return
 	}
@@ -99,7 +118,7 @@ func handleDOT(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func Graph(typeString string) (graph.Graph, error) {
+func typeGraph(typeString string) (graph.Graph, error) {
 	g := simple.NewDirectedGraph()
 
 	rootType, err := findType(typeString)
