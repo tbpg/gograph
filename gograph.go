@@ -16,6 +16,8 @@ limitations under the License.
 
 /*gograph generates a DOT graph of the given type.
 
+Referenced packages/types must be in your GOPATH.
+
 Usage:
 	-debug
 		Enable debug logging on Stderr
@@ -31,6 +33,8 @@ To analyze a type locally:
 
 Or, to run the server:
 	gograph -http :8080
+
+Warning: This is still experimental - the API, CLI, and server might change.
 */
 package main
 
@@ -65,7 +69,7 @@ type node struct {
 }
 
 func newNode(g *simple.DirectedGraph, name string) node {
-	return node{g.NewNode(), name}
+	return node{Node: g.NewNode(), name: name}
 }
 
 func (n node) Attributes() []encoding.Attribute {
