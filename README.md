@@ -12,12 +12,17 @@ Install
 go get -u github.com/tbpg/gograph
 ```
 
-Sample
+Examples
 ------
 
+Analyze a type from command line:
 ```bash
-gograph gonum.org/v1/gonum/graph/simple.DirectedGraph
-dot -Tpng out.dot -o out.png
+gograph -type gonum.org/v1/gonum/graph/simple.DirectedGraph | dot -Tpng -o out.png
+```
+
+Run a server:
+```bash
+gograph -http :8080
 ```
 
 ![sample graph](./sample.png)

@@ -14,20 +14,29 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// gograph generates a DOT graph of the given type.
-// Usage:
-//     gograph [path/to/package.type]
-//
-// For example,
-//     gograph github.com/tbpg/gograph.node
-//
-// Debug info is printed to Stdout and the .dot file is written to out.dot.
-// You can gerate a png with:
-//     dot -Tpng out.dot -o out.png
+/*gograph generates a DOT graph of the given type.
+
+Usage:
+	-debug
+		Enable debug logging on Stderr
+	-filename string
+		Where to store data if -type is specified (default: stdout).
+	-http string
+		Address to listen on for server (default: no server).
+	-type string
+		Type to analyze.
+
+To analyze a type locally:
+	gograph -type github.com/tbpg/gograph.node | dot -Tpng out.dot -o out.png
+
+Or, to run the server:
+	gograph -http :8080
+*/
 package main
 
 import (
 	"bytes"
+	"flag"
 	"fmt"
 	"go/ast"
 	"go/build"
@@ -64,15 +73,48 @@ func (n node) Attributes() []encoding.Attribute {
 }
 
 func main() {
-	g, err := typeGraph(os.Args[1])
-	if err != nil {
-		log.Fatal(err)
+	h := flag.String("http", "", "Address to listen on for server (default: no server).")
+	t := flag.String("type", "", "Type to analyze.")
+	f := flag.String("filename", "", "Where to store data if -type is specified (default: stdout).")
+	d := flag.Bool("debug", false, "Enable debug logging on Stderr")
+
+	flag.Parse()
+
+	if *t == "" && *h == "" {
+		flag.Usage()
+		os.Exit(1)
 	}
-	writeDOT("out.dot", g)
-	http.HandleFunc("/dot", handleDOT)
-	http.HandleFunc("/rawdot", handleRawDOT)
-	http.Handle("/", http.FileServer(http.Dir("static")))
-	http.ListenAndServe(":8080", nil)
+
+	debug := ioutil.Discard
+	if *d {
+		debug = os.Stderr
+	}
+
+	if *t != "" {
+		g, err := typeGraph(debug, *t)
+		if err != nil {
+			fmt.Fprintf(debug, "typeGraph error: %v\n", err)
+			os.Exit(1)
+		}
+		w := os.Stdout
+		if *f != "" {
+			of, err := os.Create(*f)
+			defer of.Close()
+			if err != nil {
+				fmt.Fprintf(debug, "os.Create error: %v\n", err)
+			}
+			w = of
+		}
+		writeDOT(w, g)
+		w.Close()
+	}
+	if *h != "" {
+		http.HandleFunc("/dot", handleDOT)
+		http.HandleFunc("/rawdot", handleRawDOT)
+		http.Handle("/", http.FileServer(http.Dir("static")))
+		log.Println("Listening on", *h)
+		http.ListenAndServe(*h, nil)
+	}
 }
 
 func handleRawDOT(w http.ResponseWriter, r *http.Request) {
@@ -81,7 +123,7 @@ func handleRawDOT(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	g, err := typeGraph(t[0])
+	g, err := typeGraph(os.Stderr, t[0])
 	if err != nil {
 		log.Printf("typeGraph error: %v\n", err)
 		return
@@ -100,7 +142,7 @@ func handleDOT(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	g, err := typeGraph(t[0])
+	g, err := typeGraph(os.Stderr, t[0])
 	if err != nil {
 		return
 	}
@@ -120,7 +162,7 @@ func handleDOT(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func typeGraph(typeString string) (graph.Graph, error) {
+func typeGraph(debug io.Writer, typeString string) (graph.Graph, error) {
 	g := simple.NewDirectedGraph()
 
 	rootType, err := findType(typeString)
@@ -131,11 +173,11 @@ func typeGraph(typeString string) (graph.Graph, error) {
 	if !ok {
 		return nil, fmt.Errorf("not a struct")
 	}
-	fmt.Printf("%s\n", rootType.Type())
+	fmt.Fprintf(debug, "%s\n", rootType.Type())
 	root := newNode(g, fmt.Sprintf("%q", rootType.Type()))
 	g.AddNode(root)
 
-	processStruct(os.Stdout, "  ", g, root, s)
+	processStruct(debug, "  ", g, root, s)
 
 	return g, nil
 }
@@ -198,12 +240,13 @@ func processStruct(w io.Writer, p string, g *simple.DirectedGraph, parent node, 
 	}
 }
 
-func writeDOT(filename string, g graph.Graph) error {
+func writeDOT(w io.Writer, g graph.Graph) error {
 	b, err := marshalDOT(g)
 	if err != nil {
 		return err
 	}
-	return ioutil.WriteFile(filename, b, 0644)
+	_, err = w.Write(b)
+	return err
 }
 
 func marshalDOT(g graph.Graph) ([]byte, error) {
