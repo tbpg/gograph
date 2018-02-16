@@ -113,11 +113,25 @@ func main() {
 		w.Close()
 	}
 	if *h != "" {
-		http.HandleFunc("/dot", handleDOT)
-		http.HandleFunc("/rawdot", handleRawDOT)
-		http.Handle("/", http.FileServer(http.Dir("static")))
+		http.HandleFunc("/dot", logged(handleDOT))
+		http.HandleFunc("/rawdot", logged(handleRawDOT))
+		http.Handle("/", loggedHandler(http.FileServer(http.Dir("static"))))
 		log.Println("Listening on", *h)
 		http.ListenAndServe(*h, nil)
+	}
+}
+
+func logged(h http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		log.Println(r.Method, r.URL)
+		h(w, r)
+	}
+}
+
+func loggedHandler(h http.Handler) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		log.Println(r.Method, r.URL.Path)
+		h.ServeHTTP(w, r)
 	}
 }
 
