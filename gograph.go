@@ -83,10 +83,12 @@ func handleRawDOT(w http.ResponseWriter, r *http.Request) {
 
 	g, err := typeGraph(t[0])
 	if err != nil {
+		log.Printf("typeGraph error: %v\n", err)
 		return
 	}
 	b, err := marshalDOT(g)
 	if err != nil {
+		log.Printf("marshalDOT error: %v\n", err)
 		return
 	}
 	w.Write(b)
