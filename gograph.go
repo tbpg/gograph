@@ -42,11 +42,6 @@ import (
 	"bytes"
 	"flag"
 	"fmt"
-	"go/ast"
-	"go/build"
-	"go/importer"
-	"go/parser"
-	"go/token"
 	"go/types"
 	"io"
 	"io/ioutil"
@@ -54,9 +49,9 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 
+	"golang.org/x/tools/go/loader"
 	"gonum.org/v1/gonum/graph"
 	"gonum.org/v1/gonum/graph/encoding"
 	"gonum.org/v1/gonum/graph/encoding/dot"
@@ -200,44 +195,29 @@ func typeGraph(debug io.Writer, typeString string) (graph.Graph, error) {
 	return g, nil
 }
 
-func findType(typeString string) (types.Object, error) {
-	fset := token.NewFileSet()
-	gopath := os.Getenv("GOPATH")
-	if gopath == "" {
-		gopath = build.Default.GOPATH
-	}
-	split := strings.Split(typeString, ".")
-	path := filepath.Join(gopath, "src", strings.Join(split[0:len(split)-1], "."))
-	varName := split[len(split)-1]
+// pkgType returns the package and type from a given string of
+// the form path/to/package.Type.
+func pkgType(s string) (pkg, t string) {
+	split := strings.Split(s, ".")
+	pkg = strings.Join(split[0:len(split)-1], ".")
+	t = split[len(split)-1]
+	return pkg, t
+}
 
-	pkgs, err := parser.ParseDir(fset, path, nil, parser.ParseComments)
+// findType returns the types.Object corresponding to the given
+// string of the form path/to/package.Type, or an error if the
+// type cannot be found.
+func findType(typeString string) (types.Object, error) {
+	pkg, t := pkgType(typeString)
+	var conf loader.Config
+	conf.Import(pkg)
+	prog, err := conf.Load()
 	if err != nil {
 		return nil, err
 	}
-
-	conf := types.Config{Importer: importer.Default()}
-
-	info := &types.Info{
-		Defs: make(map[*ast.Ident]types.Object),
-	}
-
-	var tPkgs []*types.Package
-	for _, pkg := range pkgs {
-		var files []*ast.File
-		for _, f := range pkg.Files {
-			files = append(files, f)
-		}
-		pkg, err := conf.Check(pkg.Name, fset, files, info)
-		if err != nil {
-			return nil, err
-		}
-		tPkgs = append(tPkgs, pkg)
-	}
-
-	for _, pkg := range tPkgs {
-		rootType := pkg.Scope().Lookup(varName)
-		if rootType != nil {
-			return rootType, nil
+	for _, pi := range prog.Imported {
+		if o := pi.Pkg.Scope().Lookup(t); o != nil {
+			return o, nil
 		}
 	}
 	return nil, fmt.Errorf("type not found: %q", typeString)
