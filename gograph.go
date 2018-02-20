@@ -40,6 +40,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"go/types"
@@ -130,37 +131,52 @@ func loggedHandler(h http.Handler) http.HandlerFunc {
 	}
 }
 
+// Response is the response type.
+type Response struct {
+	DOT   string // Dot contains the Dot representation of the type.
+	Error string // Error contains any error messages.
+}
+
 func handleRawDOT(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	j := json.NewEncoder(w)
 	t := r.URL.Query()["type"]
 	if len(t) != 1 {
+		j.Encode(Response{Error: "more than one type= parameter"})
 		return
 	}
 
 	g, err := typeGraph(os.Stderr, t[0])
 	if err != nil {
+		j.Encode(Response{Error: "error getting type: " + err.Error()})
 		log.Printf("typeGraph error: %v\n", err)
 		return
 	}
 	b, err := marshalDOT(g)
 	if err != nil {
+		j.Encode(Response{Error: "error encoding DOT: " + err.Error()})
 		log.Printf("marshalDOT error: %v\n", err)
 		return
 	}
-	w.Write(b)
+	j.Encode(Response{DOT: string(b)})
 }
 
 func handleDOT(w http.ResponseWriter, r *http.Request) {
+	j := json.NewEncoder(w)
 	t := r.URL.Query()["type"]
 	if len(t) != 1 {
+		j.Encode(Response{Error: "more than one type= parameter"})
 		return
 	}
 
 	g, err := typeGraph(os.Stderr, t[0])
 	if err != nil {
+		j.Encode(Response{Error: "error getting type: " + err.Error()})
 		return
 	}
 	b, err := marshalDOT(g)
 	if err != nil {
+		j.Encode(Response{Error: "error encoding DOT: " + err.Error()})
 		return
 	}
 	buf := &bytes.Buffer{}
@@ -171,7 +187,7 @@ func handleDOT(w http.ResponseWriter, r *http.Request) {
 	cmd.Stdin = buf
 	err = cmd.Run()
 	if err != nil {
-		fmt.Fprintf(w, "failed to generate")
+		j.Encode(Response{Error: "failed to run dot command"})
 	}
 }
 

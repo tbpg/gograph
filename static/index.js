@@ -42,19 +42,28 @@ function stopSpinner() {
 
 function renderGraph(data) {
 	d3.select("#graph").graphviz()
+		.onerror(function(err) {
+			console.log("d3-graphviz error: " + err);
+		})
 		.fade(true)
 		.renderDot(data);
 }
 
 window.onload = function() {
 	var spinnerTarget = document.getElementById("spinner");
+	var err = document.getElementById("error");
 	document.getElementById("typeform").addEventListener("submit", function(e){
 		e.preventDefault();
 		spin(spinnerTarget);
 		var t = document.getElementById("type");
 		d3.selectAll('svg').remove();
-		d3.text('/rawdot?type=' + t.value, function(data) {
-			renderGraph(data);
+		d3.json('/rawdot?type=' + t.value, function(data) {
+			err.innerHTML = data.Error;
+			if (data.Error != "") {
+				stopSpinner();
+				return;
+			}
+			renderGraph(data.DOT);
 			stopSpinner();
 		});
 	});
