@@ -3,7 +3,7 @@ GoGraph
 
 GoGraph builds graphs out of Go source code.
 
-GoGraph currently only works with Structs.
+GoGraph currently only works with structs.
 
 Install
 -------
