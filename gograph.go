@@ -72,6 +72,7 @@ func (n node) Attributes() []encoding.Attribute {
 	return []encoding.Attribute{{Key: "label", Value: n.name}}
 }
 
+  // This is not properly formatted.
 func main() {
 	h := flag.String("http", "", "Address to listen on for server (default: no server).")
 	t := flag.String("type", "", "Type to analyze.")
